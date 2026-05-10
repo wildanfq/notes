@@ -8,32 +8,45 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: 1. Checkout Code
+        uses: actions/checkout@v4
 
-      - name: Login to GHCR
+      - name: 2. Login to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and Push Image
+      - name: 3. Build and Push Image
         run: |
-          # Build manual lebih stabil untuk troubleshooting
-          docker build -t ghcr.io/${{ github.repository }}:latest ./server/sqllite
+          # Perintah ini untuk memastikan posisi folder saat build
+          # Kita cari di mana Dockerfile berada secara otomatis
+          DOCKERFILE_PATH=$(find . -name Dockerfile | grep sqllite | head -n 1)
+          CONTEXT_DIR=$(dirname $DOCKERFILE_PATH)
+
+          echo "Building from context: $CONTEXT_DIR"
+
+          docker build -t ghcr.io/${{ github.repository }}:latest $CONTEXT_DIR
           docker push ghcr.io/${{ github.repository }}:latest
 
-      - name: Deploy to VPS via SSH
+      - name: 4. Deploy to VPS via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           script: |
+            # Login podman di VPS
             podman login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
+
+            # Tarik update
             podman pull ghcr.io/${{ github.repository }}:latest
+
+            # Restart container
             podman stop go-api || true
             podman rm go-api || true
+
             podman run -d \
               --name go-api \
               -p 8080:8080 \
