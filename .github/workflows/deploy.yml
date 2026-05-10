@@ -17,14 +17,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and Push
-        uses: docker/build-push-action@v5
-        with:
-          context: ./server/sqllite
-          push: true
-          tags: ghcr.io/${{ github.repository }}:latest
+      - name: Build and Push Image
+        run: |
+          # Build manual lebih stabil untuk troubleshooting
+          docker build -t ghcr.io/${{ github.repository }}:latest ./server/sqllite
+          docker push ghcr.io/${{ github.repository }}:latest
 
-      - name: Deploy to VPS
+      - name: Deploy to VPS via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.HOST }}
