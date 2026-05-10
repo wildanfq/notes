@@ -1,4 +1,4 @@
-Berikut adalah dokumentasi lengkap dan terstruktur mengenai alur kerja **Ansible** untuk mengelola dan mengotomatisasi konfigurasi server Anda. Dokumentasi ini disusun sebagai kelanjutan dari Terraform agar Anda memiliki panduan utuh dalam mengelola infrastruktur.
+ # Ansibleuntuk mengelola dan mengotomatisasi konfigurasi server.
 
 ---
 

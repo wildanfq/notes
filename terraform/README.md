@@ -1,202 +1,141 @@
-# Struktur Project Terraform (Google Cloud)
+# Terraform untuk mengelola infrastruktur Google Cloud
 
-## A. Struktur Kode Terraform
+## 1. Persiapan Lingkungan Kerja di Laptop
 
-Buat sebuah folder untuk proyek Anda (misal: `proyek-vps`), lalu buat dua file di bawah ini di dalam folder tersebut.
+Langkah paling dasar adalah menyiapkan "alat tempur" di laptop lokal Anda. Anda perlu mengunduh **Terraform** sebagai alat orkestrasi infrastruktur dan **Google Cloud CLI (gcloud)** sebagai jembatan komunikasi antara laptop dan server Google. Pastikan setelah instalasi, folder binari keduanya sudah masuk ke dalam *System PATH* agar perintah tersebut bisa dipanggil dari folder mana pun di terminal Anda.
 
-### 1. `variables.tf`
+Untuk memulainya, instal Google Cloud CLI dengan menjalankan file `install.sh` yang telah Anda unduh sebelumnya. Setelah itu, verifikasi instalasi dengan mengetik `gcloud --version` dan `terraform --version`. Jika keduanya memunculkan angka versi, berarti fondasi di laptop Anda sudah siap untuk melangkah ke tahap autentikasi.
 
-File ini menyimpan semua konfigurasi dasar agar kode utama Anda tetap bersih dan mudah diubah di satu tempat.
 
-```hcl
-variable "project_id" {
-  description = "ID Project Google Cloud Anda"
-  default     = "coral-box-495211-p8"
-}
+---
 
-variable "region" {
-  description = "Region utama untuk resource"
-  default     = "asia-southeast2"
-}
+## 2. Autentikasi dan Penghubung Akun
 
-variable "zone" {
-  description = "Zona spesifik untuk penempatan server"
-  default     = "asia-southeast2-a"
-}
+Setelah alat terpasang, Anda harus memberikan izin akses agar Terraform bisa masuk ke proyek Google Cloud Anda. Karena adanya kebijakan organisasi yang melarang pembuatan file kunci JSON secara manual, kita menggunakan metode **Application Default Credentials (ADC)**. Metode ini jauh lebih aman karena menggunakan sesi login browser Anda untuk memberikan token akses sementara kepada Terraform.
 
-variable "machine_type" {
-  description = "Spesifikasi ukuran server (Compute Engine)"
-  default     = "e2-micro"
-}
+Jalankan perintah `gcloud auth application-default login` di terminal laptop. Browser akan terbuka secara otomatis; silakan pilih akun Google Anda dan klik "Allow". Setelah berhasil, terminal akan menampilkan pesan bahwa kredensial telah disimpan dalam file lokal di folder `.config`. Dengan langkah ini, laptop Anda sekarang sudah memiliki "kunci duplikat" yang sah untuk membangun apa pun di Google Cloud tanpa perlu membuat kunci akun layanan manual di konsol web.
 
-```
+---
 
-### 2. `main.tf`
+## 3. Inisialisasi Proyek Terraform
 
-Ini adalah cetak biru (*blueprint*) utama infrastruktur Anda, disusun dari fondasi (Provider & Jaringan) hingga ke atas (Server/VM).
+Langkah selanjutnya adalah membuat direktori kerja khusus untuk proyek Anda, misalnya `mkdir proyek-vps && cd proyek-vps`. Di dalam folder ini, Anda harus membuat file konfigurasi utama, biasanya bernama `main.tf`. File ini berfungsi sebagai cetak biru (blueprint) yang menjelaskan kepada Google Cloud jenis server apa yang ingin Anda buat, berapa kapasitas RAM-nya, di mana lokasinya (seperti Jakarta/`asia-southeast2`), hingga aturan keamanan firewall-nya.
+
+Setelah file `main.tf` dibuat, jalankan perintah `terraform init`. Perintah ini sangat krusial karena Terraform akan mendeteksi bahwa Anda menggunakan provider Google dan secara otomatis mengunduh plugin atau "driver" yang diperlukan ke dalam folder proyek Anda. Jika muncul pesan berwarna hijau bertuliskan "Terraform has been successfully initialized!", berarti mesin Terraform Anda sudah panas dan siap untuk mengeksekusi kode.
+
+---
+
+
+
+## 4. Penulisan Kode Konfigurasi (Blueprint)
+
+Berikut adalah contoh kode `main.tf` yang solid dan rapi untuk kebutuhan server backend Anda. Kode ini menggunakan provider Google, mendefinisikan jaringan VPC agar server memiliki jalur komunikasi sendiri, serta mengatur firewall agar port penting seperti SSH (22) dan HTTP (80) terbuka untuk umum.
+
+
 
 ```hcl
-# ==========================================
-# 0. KONFIGURASI PROVIDER
-# ==========================================
+
+# Definisi Koneksi ke Google Cloud
+
 provider "google" {
-  project = var.project_id
-  region  = var.region
-  zone    = var.zone
+
+  project = "ID-PROJECT-ANDA"
+
+  region  = "asia-southeast2"
+
 }
 
-# ==========================================
-# 1. FONDASI JARINGAN (VPC)
-# ==========================================
-resource "google_compute_network" "vpc_network" {
-  name                    = "backend-vpc"
-  auto_create_subnetworks = true
+
+# Membuat Jaringan Virtual (VPC)
+
+resource "google_compute_network" "vpc_utama" {
+
+  name = "jaringan-backend"
+
 }
 
-# ==========================================
-# 2. KEAMANAN (FIREWALL)
-# ==========================================
+
+# Aturan Firewall agar Server Bisa Diakses
+
 resource "google_compute_firewall" "ijinkan_akses" {
-  name    = "buka-port-backend"
-  network = google_compute_network.vpc_network.name
+
+  name    = "buka-akses-publik"
+
+  network = google_compute_network.vpc_utama.name
 
   allow {
+
     protocol = "tcp"
-    ports    = ["22", "80", "443", "8080"] # SSH, HTTP, HTTPS, & Port API Backend
+
+    ports    = ["22", "80", "8080"]
+
   }
 
-  source_ranges = ["0.0.0.0/0"] # Mengizinkan akses dari seluruh internet
+  source_ranges = ["0.0.0.0/0"]
+
 }
 
-# ==========================================
-# 3. SERVER (COMPUTE ENGINE)
-# ==========================================
-resource "google_compute_instance" "backend_server" {
+
+# Spesifikasi Server VPS (Virtual Machine)
+
+resource "google_compute_instance" "vm_backend" {
+
   name         = "server-backend-utama"
-  machine_type = var.machine_type
-  zone         = var.zone
+
+  machine_type = "e2-medium"
+
+  zone         = "asia-southeast2-a"
 
   boot_disk {
+
     initialize_params {
+
       image = "ubuntu-os-cloud/ubuntu-2204-lts"
-      size  = 20 # Kapasitas disk (GB)
+
+      size  = 20
+
     }
+
   }
+
+
 
   network_interface {
-    network = google_compute_network.vpc_network.name
-    access_config {
-      # Blok ini kosong sudah cukup untuk meminta IP Publik Ephemeral
-    }
+
+    network = google_compute_network.vpc_utama.name
+
+    access_config {} # Agar dapat IP Publik
+
   }
 
-  # Script otomatis saat server pertama kali menyala
-  metadata_startup_script = <<-EOT
-    sudo apt-get update
-    sudo apt-get install -y podman
-  EOT
 
-  labels = {
-    env = "production"
-  }
+
+  metadata_startup_script = "sudo apt-get update && sudo apt-get install -y podman"
+
 }
 
-# ==========================================
-# 4. OUTPUT (INFORMASI PENTING)
-# ==========================================
-output "ip_publik_server" {
-  value       = google_compute_instance.backend_server.network_interface.0.access_config.0.nat_ip
-  description = "Gunakan IP Publik ini untuk SSH atau mengakses API backend di browser"
+
+
+output "ip_publik" {
+
+  value = google_compute_instance.vm_backend.network_interface.0.access_config.0.nat_ip
+
 }
 
 ```
 
 ---
 
-## B. Alur Kerja (Langkah Eksekusi)
+## 5. Simulasi dan Eksekusi (Deploy)
 
-Berikut adalah panduan dari tahap persiapan di lokal hingga server Anda siap digunakan di Cloud.
+Sebelum benar-benar membangun server yang mungkin memakan biaya, Terraform menyediakan fitur simulasi melalui perintah `terraform plan`. Perintah ini akan membandingkan kondisi laptop Anda saat ini dengan kondisi di Google Cloud. Terraform akan menampilkan daftar "rencana" tentang apa saja yang akan ditambah, diubah, atau dihapus. Ini adalah tahap krusial untuk memastikan tidak ada kesalahan ketik atau pengaturan yang salah sebelum uang/kuota Anda terpakai.
 
-### Tahap 1: Persiapan Lingkungan Kerja (Lokal)
+Jika rencana sudah sesuai, jalankan perintah pamungkas: `terraform apply`. Ketik `yes` saat diminta konfirmasi. Terraform akan bekerja di latar belakang, menghubungi API Google Cloud, membuat jaringan, mengatur firewall, dan menyalakan mesin VPS Anda. Tunggu hingga proses selesai dan alamat IP publik server muncul di terminal Anda. IP inilah yang menjadi "pintu masuk" utama ke server baru Anda.
 
-Siapkan "alat tempur" di laptop Anda:
+---
 
-1. Unduh dan instal **Terraform**.
-2. Unduh dan instal **Google Cloud CLI (gcloud)**.
-3. Pastikan keduanya sudah terdaftar di *System PATH*. Verifikasi dengan mengetik `terraform --version` dan `gcloud --version` di terminal.
+## 6. Pengujian dan Akses Masuk
 
-### Tahap 2: Autentikasi (Penghubung Akun)
+Setelah server aktif, langkah terakhir adalah memverifikasi apakah server tersebut bisa digunakan. Gunakan perintah `gcloud compute ssh server-backend-utama --zone=asia-southeast2-a` untuk masuk ke dalam terminal server. Karena kita menyertakan *startup script* di dalam kode Terraform, server tersebut akan otomatis menginstal Podman sesaat setelah menyala. Anda bisa mengetesnya dengan perintah `podman --version` di dalam server.
 
-Hubungkan laptop Anda dengan Google Cloud menggunakan metode *Application Default Credentials* (ADC) agar aman tanpa perlu mengunduh file JSON manual.
-
-* Jalankan perintah ini di terminal:
-```bash
-gcloud auth application-default login
-
-```
-
-
-* Browser akan terbuka. Pilih akun Google Anda dan berikan izin (*Allow*).
-
-### Tahap 3: Inisialisasi Proyek Terraform
-
-Masuk ke folder proyek tempat Anda menyimpan file `main.tf` dan `variables.tf`, lalu jalankan:
-
-```bash
-terraform init
-
-```
-
-*Langkah ini akan mengunduh plugin/driver Google Cloud yang dibutuhkan oleh Terraform ke dalam folder Anda.*
-
-### Tahap 4: Simulasi (Plan)
-
-Sebelum membangun server yang sesungguhnya, lihat pratinjau apa saja yang akan dibuat oleh kode Anda:
-
-```bash
-terraform plan
-
-```
-
-*Pastikan tidak ada error dan rencana pembuatan infrastruktur (Jaringan, Firewall, VM) sudah sesuai.*
-
-### Tahap 5: Eksekusi (Deploy)
-
-Jika rencana sudah benar, perintahkan Terraform untuk mulai membangun semuanya di Google Cloud:
-
-```bash
-terraform apply
-
-```
-
-*Ketik `yes` saat diminta konfirmasi. Tunggu beberapa menit hingga selesai. Di akhir proses, terminal akan menampilkan **`ip_publik_server`**.*
-
-### Tahap 6: Pengujian & Akses Masuk
-
-Setelah server menyala, mari kita uji apakah konfigurasi berjalan sempurna:
-
-1. **Masuk ke Server:**
-Gunakan perintah gcloud untuk *remote* ke dalam server:
-
-```bash
-   gcloud compute ssh server-backend-utama --zone=asia-southeast2-a
-
-```
-
-2. **Cek Podman:**
-Karena kita menggunakan *startup script*, Podman seharusnya sudah terinstal otomatis. Cek dengan:
-```bash
-podman --version
-
-```
-
-
-3. **Tes Jaringan Publik:**
-Jalankan web server ringan untuk memastikan IP Publik dan Firewall berfungsi:
-```bash
-sudo podman run -d -p 80:80 nginx
-
-```
-
-
-Buka browser di laptop Anda, lalu ketikkan **IP Publik** yang didapat dari langkah 5. Jika halaman *"Welcome to nginx!"* muncul, selamat! Infrastruktur Anda sudah solid dan siap menampung kode *backend* Anda.
+Untuk pengujian akhir secara visual, jalankan container sederhana dengan `sudo podman run -d -p 80:80 nginx`. Ambil IP publik yang muncul di output Terraform tadi, lalu tempelkan di browser laptop Anda. Jika halaman "Welcome to nginx" muncul, berarti alur dari bawah (laptop) ke atas (server cloud) telah terjalin dengan sangat solid dan infrastruktur Anda siap digunakan untuk tahap pengembangan backend selanjutnya.
