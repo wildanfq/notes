@@ -1,4 +1,4 @@
-name: Deploy API to GCP
+name: Deploy API SQLite
 
 on:
   push:
@@ -20,7 +20,7 @@ jobs:
       - name: Build and Push
         uses: docker/build-push-action@v5
         with:
-          context: ./notes/server/sqllite
+          context: ./server/sqllite
           push: true
           tags: ghcr.io/${{ github.repository }}:latest
 
