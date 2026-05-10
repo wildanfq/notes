@@ -8,41 +8,33 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: 1. Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: 2. Login ke GitHub Container Registry
+      - name: Login to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 3. Build & Push Image
+      - name: Build and Push
         uses: docker/build-push-action@v5
         with:
-          context: ./sqllite
+          context: ./notes/server/sqllite
           push: true
           tags: ghcr.io/${{ github.repository }}:latest
 
-      - name: 4. Deploy ke VPS via SSH
+      - name: Deploy to VPS
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           script: |
-            # Login ke registry
             podman login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
-
-            # Tarik image terbaru yang baru saja di-push
             podman pull ghcr.io/${{ github.repository }}:latest
-
-            # Hentikan & hapus container lama
             podman stop go-api || true
             podman rm go-api || true
-
-            # Jalankan container baru
             podman run -d \
               --name go-api \
               -p 8080:8080 \
